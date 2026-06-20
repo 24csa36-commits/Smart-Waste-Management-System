@@ -1,0 +1,159 @@
+/* Custom Styles for Smart Waste Management System */
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+  background-color: #f8fafc;
+  color: #334155;
+  transition: all 0.3s ease-in-out;
+}
+
+/* Override font on MUI and other elements */
+.MuiTypography-root,
+.MuiButton-root,
+.MuiInputBase-root,
+.MuiTableCell-root,
+.MuiTab-root {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+}
+
+/* Glassmorphism Cards */
+.glass-card {
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 8px 32px 0 rgba(15, 23, 42, 0.04) !important;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease !important;
+}
+
+.glass-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 40px 0 rgba(15, 23, 42, 0.08) !important;
+}
+
+/* Dark themed glass cards */
+.glass-card-dark {
+  background: rgba(30, 41, 59, 0.8) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Typography Gradient Text */
+.text-gradient-eco {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-citizen {
+  background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-worker {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Eco Buttons */
+.eco-btn-primary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+  padding: 12px 24px !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 8px 20px -6px rgba(16, 185, 129, 0.5) !important;
+}
+
+.eco-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -4px rgba(16, 185, 129, 0.7) !important;
+  filter: brightness(1.05);
+}
+
+.citizen-btn-primary {
+  background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+  padding: 12px 24px !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 8px 20px -6px rgba(6, 182, 212, 0.5) !important;
+}
+
+.citizen-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -4px rgba(6, 182, 212, 0.7) !important;
+  filter: brightness(1.05);
+}
+
+/* Pulse indicator dots */
+.alert-dot-pulse {
+  position: relative;
+}
+.alert-dot-pulse::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  top: 0;
+  right: 0;
+  animation: pulseMarker 1.5s infinite;
+}
+
+@keyframes pulseMarker {
+  0% {
+    transform: scale(0.85);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.85);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+/* Custom Scrollbar for dashboard panels */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Leaflet Layout custom styling */
+.leaflet-container {
+  border-radius: 16px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.06) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+}
+
+/* Stat Cards overlay style */
+.stats-floating-overlay {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1000;
+  pointer-events: none;
+}

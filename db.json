@@ -1,0 +1,23 @@
+{
+  "bins": [
+    { "id": "BIN-01", "name": "Gandhipuram Cross Cut Road, Coimbatore", "lat": 11.0183, "lng": 76.9691, "fillLevel": 82, "type": "General", "capacity": 150, "lastEmptied": "2026-06-19 14:30" },
+    { "id": "BIN-02", "name": "RS Puram DB Road, Coimbatore", "lat": 11.0125, "lng": 76.9456, "fillLevel": 45, "type": "Recyclable", "capacity": 100, "lastEmptied": "2026-06-18 09:15" },
+    { "id": "BIN-03", "name": "Peelamedu Avinashi Road, Coimbatore", "lat": 11.0267, "lng": 77.0118, "fillLevel": 92, "type": "Organic", "capacity": 120, "lastEmptied": "2026-06-20 06:00" },
+    { "id": "BIN-04", "name": "Town Hall Main Area, Coimbatore", "lat": 10.9964, "lng": 76.9619, "fillLevel": 15, "type": "Recyclable", "capacity": 100, "lastEmptied": "2026-06-19 11:20" },
+    { "id": "BIN-05", "name": "Race Course Walking Path, Coimbatore", "lat": 10.9998, "lng": 76.9749, "fillLevel": 68, "type": "Hazardous", "capacity": 80, "lastEmptied": "2026-06-19 17:45" },
+    { "id": "BIN-06", "name": "Ukkadam Bus Stand, Coimbatore", "lat": 10.9878, "lng": 76.9632, "fillLevel": 30, "type": "General", "capacity": 120, "lastEmptied": "2026-06-20 02:10" }
+  ],
+  "complaints": [
+    { "id": "COMP-101", "title": "Overflowing plastic bin at RS Puram", "desc": "The recycling bin is full and plastics are scattering around.", "lat": 11.0125, "lng": 76.9456, "type": "Recyclable", "status": "Pending", "reporter": "citizen@eco.com", "binId": "BIN-02", "createdAt": "2026-06-20 05:40" },
+    { "id": "COMP-102", "title": "Hazardous paint disposal near Peelamedu", "desc": "Multiple old paint cans left adjacent to the park entrance.", "lat": 11.0267, "lng": 77.0118, "type": "Hazardous", "status": "In Progress", "reporter": "alex@citizen.org", "assignedTo": "worker@eco.com", "createdAt": "2026-06-19 16:30" }
+  ],
+  "workers": [
+    { "email": "worker@eco.com", "name": "John Doe", "truck": "TRUCK-Eco99", "status": "Active", "route": ["BIN-03", "BIN-01"] },
+    { "email": "driver2@eco.com", "name": "Sarah Connor", "truck": "TRUCK-Green77", "status": "Active", "route": ["BIN-05"] }
+  ],
+  "vehicles": [
+    { "id": "TRUCK-Eco99", "model": "E-Garbage Lifter XL", "driver": "John Doe", "capacity": 500, "load": 380, "fuel": "Electric", "status": "Active" },
+    { "id": "TRUCK-Green77", "model": "CNG Pack-Compactor", "driver": "Sarah Connor", "capacity": 600, "load": 180, "fuel": "CNG", "status": "Active" },
+    { "id": "TRUCK-Power44", "model": "Diesel Heavy Hauler", "driver": "Unassigned", "capacity": 800, "load": 0, "fuel": "Diesel", "status": "Idle" }
+  ]
+}
