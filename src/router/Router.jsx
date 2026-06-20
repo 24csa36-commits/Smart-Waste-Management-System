@@ -6,8 +6,8 @@ import AuthRegister from "../AuthPages/AuthRegister.jsx";
 import PublicLogin from "../AuthPages/PublicLogin.jsx";
 import PublicRegister from "../AuthPages/PublicRegister.jsx";
 import WorkerLogin from "../AuthPages/WorkerLogin.jsx";
-import WorkerRegister from "../AuthPages/WorkerRegister.jsx";
 import AuthorityDashboard from "../pages/AuthorityDashboard.jsx";
+import AssignmentDispatch from "../pages/AssignmentDispatch.jsx";
 import PublicDashboard from "../pages/PublicDashboard.jsx";
 import WorkerDashboard from "../pages/WorkerDashboard.jsx";
 
@@ -69,24 +69,24 @@ const Router = () => {
           <WorkerLogin />
         </AuthGuard>
       } />
-      <Route path="/worker/register" element={
-        <AuthGuard type="worker">
-          <WorkerRegister />
-        </AuthGuard>
-      } />
 
       {/* Dashboards */}
+      <Route path="/dashboard/authority/assignment-dispatch" element={
+        <ProtectedRoute allowedType="authority">
+          <AssignmentDispatch />
+        </ProtectedRoute>
+      } />
       <Route path="/dashboard/authority/*" element={
         <ProtectedRoute allowedType="authority">
           <AuthorityDashboard />
         </ProtectedRoute>
       } />
       
-      <Route path="/dashboard/citizen/*" element={
-        <ProtectedRoute allowedType="public">
-          <PublicDashboard />
-        </ProtectedRoute>
-      } />
+      <Route path="/dashboard/public/*" element={
+  <ProtectedRoute allowedType="public">
+    <PublicDashboard />
+  </ProtectedRoute>
+} />
       
       <Route path="/dashboard/worker/*" element={
         <ProtectedRoute allowedType="worker">

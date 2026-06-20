@@ -17,6 +17,7 @@
     "@mui/material": "^9.1.1",
     "@tanstack/react-table": "^8.21.3",
     "axios": "^1.18.0",
+    "firebase": "^12.15.0",
     "framer-motion": "^12.40.0",
     "leaflet": "^1.9.4",
     "react": "^19.2.6",

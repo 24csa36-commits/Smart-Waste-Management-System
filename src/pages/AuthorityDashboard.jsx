@@ -33,9 +33,11 @@ import {
   FaMapMarkerAlt,
   FaUsers,
   FaGasPump,
-  FaCamera
+  FaCamera,
+  FaArrowRight,
+  FaEdit
 } from 'react-icons/fa';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   ResponsiveContainer, 
@@ -54,25 +56,48 @@ import {
 } from 'recharts';
 import { toast, ToastContainer } from 'react-toastify';
 
-// Custom dot marker icon for Leaflet
-const getMarkerIcon = (fillLevel) => {
-  let color = '#10b981'; // Green
-  let border = '#047857';
-  let pulse = '';
-  if (fillLevel >= 80) {
-    color = '#ef4444'; // Red
-    border = '#b91c1c';
-    pulse = 'alert-dot-pulse';
-  } else if (fillLevel >= 50) {
-    color = '#f59e0b'; // Yellow
-    border = '#b45309';
-  }
+// Helpers for redesigned Command Center Map
+const getComplaintPriority = (c) => {
+  if (c.type === 'Hazardous' || c.desc.toLowerCase().includes('overflow') || c.title.toLowerCase().includes('overflow')) return 'Critical';
+  if (c.status === 'Pending') return 'Medium';
+  if (c.status === 'Assigned') return 'Low';
+  return 'Low';
+};
 
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return "0.0";
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return (R * c).toFixed(1);
+};
+
+const getComplaintMarkerIcon = (priority) => {
+  let color = '#10b981'; // Low
+  if (priority === 'Critical') color = '#ef4444'; // Red
+  else if (priority === 'Medium') color = '#f59e0b'; // Orange
   return new L.DivIcon({
-    html: `<div class="${pulse}" style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.25);"></div>`,
-    className: 'custom-bin-marker',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10]
+    html: `<div style="background-color: ${color}; width: 22px; height: 22px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`,
+    className: 'custom-complaint-marker',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11]
+  });
+};
+
+const getVehicleMarkerIcon = (status) => {
+  let color = '#3b82f6'; // Available - Blue
+  if (status === 'Assigned' || status === 'On Route') color = '#f59e0b'; // Yellow
+  else if (status === 'At Complaint Site') color = '#10b981'; // Green
+  else if (status === 'Completed') color = '#6b7280'; // Gray
+  return new L.DivIcon({
+    html: `<div style="background-color: white; color: ${color}; width: 28px; height: 28px; border-radius: 50%; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 8px rgba(0,0,0,0.2);"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 640 512" height="14px" width="14px" xmlns="http://www.w3.org/2000/svg"><path d="M624 352h-16V243.9c0-12.7-5.1-24.9-14.1-33.9L494 110.1c-9-9-21.2-14.1-33.9-14.1H416V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48v320c0 26.5 21.5 48 48 48h16c0 53 43 96 96 96s96-43 96-96h128c0 53 43 96 96 96s96-43 96-96h48c8.8 0 16-7.2 16-16v-32c0-8.8-7.2-16-16-16zM160 464c-26.5 0-48-21.5-48-48s21.5-48 48-48 48 21.5 48 48-21.5 48-48 48zm320 0c-26.5 0-48-21.5-48-48s21.5-48 48-48 48 21.5 48 48-21.5 48-48 48z"></path></svg></div>`,
+    className: 'custom-vehicle-marker',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14]
   });
 };
 
@@ -98,11 +123,16 @@ const AuthorityDashboard = () => {
     assignRoute,
     addVehicle,
     updateVehicleStatus,
-    addStaff
+    addStaff,
+    updateStaff
   } = useApp();
 
   const [activeTab, setActiveTab] = useState(0);
   const [mapCenter, setMapCenter] = useState([11.0168, 76.9558]);
+  
+  // Command Center Map State
+  const [mapFilter, setMapFilter] = useState('All Complaints');
+  const [selectedMapComplaint, setSelectedMapComplaint] = useState(null);
   
   // Add Bin Modal States
   const [openAddBin, setOpenAddBin] = useState(false);
@@ -115,8 +145,15 @@ const AuthorityDashboard = () => {
   // Add Staff Modal States
   const [openAddStaff, setOpenAddStaff] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
-  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [newStaffPhone, setNewStaffPhone] = useState('');
   const [newStaffTruck, setNewStaffTruck] = useState('Unassigned');
+
+  // Edit Staff Modal States
+  const [openEditStaff, setOpenEditStaff] = useState(false);
+  const [editStaffId, setEditStaffId] = useState('');
+  const [editStaffName, setEditStaffName] = useState('');
+  const [editStaffPhone, setEditStaffPhone] = useState('');
+  const [editStaffTruck, setEditStaffTruck] = useState('Unassigned');
 
   // Photo Evidence Viewer States
   const [openPhotoDialog, setOpenPhotoDialog] = useState(false);
@@ -173,24 +210,53 @@ const AuthorityDashboard = () => {
 
   const handleAddStaffSubmit = async (e) => {
     e.preventDefault();
-    if (!newStaffName || !newStaffEmail) {
+    if (!newStaffName || !newStaffPhone) {
       toast.error('Please fill all fields');
       return;
     }
-    const res = await addStaff(newStaffName, newStaffEmail, newStaffTruck);
+    const phoneRegex = /^\+91\d{10}$/;
+    if (!phoneRegex.test(newStaffPhone)) {
+      toast.error('Phone must be in format: +91XXXXXXXXXX');
+      return;
+    }
+    const res = await addStaff(newStaffName, newStaffPhone, newStaffTruck);
     if (res.success) {
       toast.success('Staff member successfully registered!');
       setOpenAddStaff(false);
       setNewStaffName('');
-      setNewStaffEmail('');
+      setNewStaffPhone('');
       setNewStaffTruck('Unassigned');
     } else {
       toast.error(res.message);
     }
   };
 
-  const handleStatusUpdate = (complaintId, nextStatus, workerEmail = null) => {
-    updateComplaintStatus(complaintId, nextStatus, workerEmail);
+  const handleEditStaffSubmit = async (e) => {
+    e.preventDefault();
+    if (!editStaffName || !editStaffPhone) {
+      toast.error('Please fill all fields');
+      return;
+    }
+    const phoneRegex = /^\+91\d{10}$/;
+    if (!phoneRegex.test(editStaffPhone)) {
+      toast.error('Phone must be in format: +91XXXXXXXXXX');
+      return;
+    }
+    const res = await updateStaff(editStaffId, editStaffName, editStaffPhone, editStaffTruck);
+    if (res.success) {
+      toast.success('Staff member updated successfully!');
+      setOpenEditStaff(false);
+      setEditStaffId('');
+      setEditStaffName('');
+      setEditStaffPhone('');
+      setEditStaffTruck('Unassigned');
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleStatusUpdate = (complaintId, nextStatus, workerPhone = null) => {
+    updateComplaintStatus(complaintId, nextStatus, workerPhone);
     toast.info(`Report status updated to ${nextStatus}`);
   };
 
@@ -204,7 +270,7 @@ const AuthorityDashboard = () => {
     toast.success('Collection route updated for driver!');
     
     // Also set vehicle of driver to active status
-    const driver = workers.find(w => w.email === selectedWorker);
+    const driver = workers.find(w => w.phone === selectedWorker);
     if (driver && driver.truck) {
       updateVehicleStatus(driver.truck, 'Active', driver.name);
     }
@@ -224,14 +290,16 @@ const AuthorityDashboard = () => {
     { day: 'Sun', 'Resolved Tickets': 28, 'Pending Tickets': 4, 'Total Complaints': 32 }
   ];
 
-  // 2. Status Trends (Pending vs In Progress vs Resolved)
+  // 2. Status Trends (Pending vs Assigned vs Awaiting Authority Verification vs Resolved)
   const pendingCount = complaints.filter(c => c.status === 'Pending').length;
-  const inProgressCount = complaints.filter(c => c.status === 'In Progress').length;
+  const assignedCount = complaints.filter(c => c.status === 'Assigned').length;
+  const awaitingCount = complaints.filter(c => c.status === 'Awaiting Authority Verification').length;
   const resolvedCount = complaints.filter(c => c.status === 'Resolved').length;
 
   const statusTrendsData = [
     { name: 'Pending Tickets', value: pendingCount || 1, color: '#ef4444' },
-    { name: 'In Progress Dispatch', value: inProgressCount || 1, color: '#06b6d4' },
+    { name: 'Assigned Dispatch', value: assignedCount || 1, color: '#3b82f6' },
+    { name: 'Awaiting Verification', value: awaitingCount || 1, color: '#f59e0b' },
     { name: 'Resolved Collections', value: resolvedCount || 2, color: '#10b981' }
   ];
 
@@ -263,10 +331,9 @@ const AuthorityDashboard = () => {
               { id: 0, label: 'Control Center', icon: <FaBuilding /> },
               { id: 1, label: 'Live IoT Map', icon: <FaMapMarkedAlt /> },
               { id: 2, label: 'Complaint Management', icon: <FaExclamationTriangle /> },
-              { id: 3, label: 'Assignment Dispatch', icon: <FaTruck /> },
-              { id: 4, label: 'Vehicle Management', icon: <FaGasPump /> },
-              { id: 5, label: 'Labor Management', icon: <FaUsers /> },
-              { id: 6, label: 'Analytics Reports', icon: <FaChartBar /> }
+              { id: 3, label: 'Vehicle Management', icon: <FaGasPump /> },
+              { id: 4, label: 'Labor Management', icon: <FaUsers /> },
+              { id: 5, label: 'Analytics Reports', icon: <FaChartBar /> }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -384,59 +451,282 @@ const AuthorityDashboard = () => {
           </div>
         )}
 
-        {/* TAB 1: LIVE IoT MAP */}
-        {activeTab === 1 && (
-          <div className="d-flex flex-column flex-grow-1" style={{ height: 'calc(100vh - 80px)' }}>
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <div>
-                <h2 className="fw-black text-slate-900 mb-1">Live IoT Map</h2>
-                <p className="text-muted fs-7 mb-0">Locations and live fill rates of Indian Smart Trash Bins.</p>
-              </div>
-              <button 
-                onClick={() => setOpenAddBin(true)}
-                className="btn btn-success eco-btn-primary d-flex align-items-center gap-2 py-2"
-              >
-                <FaPlus /> Register new smart Bin
-              </button>
-            </div>
+        {/* TAB 1: COMMAND CENTER MAP */}
+        {activeTab === 1 && (() => {
+          // Calculations
+          const totalComplaints = complaints.length;
+          const mapPending = complaints.filter(c => c.status === 'Pending').length;
+          const mapAssigned = complaints.filter(c => c.status === 'Assigned').length;
+          const mapCritical = complaints.filter(c => getComplaintPriority(c) === 'Critical').length;
+          const activeVehicles = vehicles.filter(v => v.status === 'Active' || v.status === 'Assigned' || v.status === 'Available').length;
 
-            <div className="flex-grow-1 position-relative rounded-4 border overflow-hidden shadow-sm" style={{ minHeight: '380px' }}>
-              <MapContainer center={mapCenter} zoom={12} style={{ height: '100%', width: '100%' }}>
-                <ChangeMapView center={mapCenter} />
-                <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
-                />
-                {bins.map(bin => (
-                  <Marker 
-                    key={bin.id} 
-                    position={[bin.lat, bin.lng]} 
-                    icon={getMarkerIcon(bin.fillLevel)}
-                  >
-                    <Popup>
-                      <div className="p-1 text-start" style={{ minWidth: '160px' }}>
-                        <h6 className="fw-bold mb-1 fs-7">{bin.name}</h6>
-                        <span className="d-block fs-8 text-muted mb-2">ID: <b>{bin.id}</b> | Type: {bin.type}</span>
-                        <div className="d-flex align-items-center justify-content-between mb-1">
-                          <span className="fs-8 text-secondary">Fill Level</span>
-                          <strong className={`fs-8 ${bin.fillLevel >= 80 ? 'text-danger' : bin.fillLevel >= 50 ? 'text-warning' : 'text-success'}`}>{bin.fillLevel}%</strong>
-                        </div>
-                        <div className="progress mb-2" style={{ height: '5px' }}>
-                          <div 
-                            className={`progress-bar ${bin.fillLevel >= 80 ? 'bg-danger' : bin.fillLevel >= 50 ? 'bg-warning' : 'bg-success'}`}
-                            role="progressbar" 
-                            style={{ width: `${bin.fillLevel}%` }}
-                          />
-                        </div>
-                        <span className="fs-8 text-muted d-block mt-2">Cap: {bin.capacity}L | Emptied: {bin.lastEmptied}</span>
-                      </div>
-                    </Popup>
-                  </Marker>
+          // Helper to find nearest vehicle
+          const getNearestVehicle = (complaint) => {
+            const available = vehicles.filter(v => v.status === 'Available' || v.status === 'Active');
+            if (available.length === 0) return null;
+            let nearest = available[0];
+            let minDist = Infinity;
+            available.forEach(v => {
+              let vLat = v.lat;
+              let vLng = v.lng;
+              if (vLat === undefined || vLng === undefined) {
+                console.warn(`Vehicle ${v.id} missing coordinates. Using fallback.`);
+                vLat = 11.0168; // Coimbatore center
+                vLng = 76.9558;
+              }
+              const dist = parseFloat(getDistance(complaint.lat, complaint.lng, vLat, vLng));
+              if (dist < minDist) {
+                minDist = dist;
+                nearest = { ...v, lat: vLat, lng: vLng, distance: dist };
+              }
+            });
+            nearest.eta = Math.round((nearest.distance / 30) * 60) || 1; // Assuming 30km/h, minimum 1 min
+            return nearest;
+          };
+
+          // Filter logic
+          let displayComplaints = complaints;
+          if (mapFilter === 'Pending') displayComplaints = complaints.filter(c => c.status === 'Pending');
+          if (mapFilter === 'Assigned') displayComplaints = complaints.filter(c => c.status === 'Assigned');
+          if (mapFilter === 'Critical') displayComplaints = complaints.filter(c => getComplaintPriority(c) === 'Critical');
+
+          return (
+            <div className="d-flex flex-column flex-grow-1" style={{ height: 'calc(100vh - 80px)' }}>
+              
+              {/* Top Dashboard Summary */}
+              <div className="row g-3 mb-3">
+                {[
+                  { label: 'Total Complaints', value: totalComplaints, color: 'text-primary' },
+                  { label: 'Pending Complaints', value: mapPending, color: 'text-warning' },
+                  { label: 'Assigned Complaints', value: mapAssigned, color: 'text-info' },
+                  { label: 'Critical Complaints', value: mapCritical, color: 'text-danger' },
+                  { label: 'Active Vehicles', value: activeVehicles, color: 'text-success' }
+                ].map((stat, idx) => (
+                  <div className="col" key={idx}>
+                    <div className="card glass-card p-3 border-0 shadow-sm text-center h-100">
+                      <span className="text-muted fs-8 fw-semibold uppercase tracking-wider">{stat.label}</span>
+                      <h4 className={`fw-black mb-0 mt-1 ${stat.color}`}>{stat.value}</h4>
+                    </div>
+                  </div>
                 ))}
-              </MapContainer>
+              </div>
+
+              {/* Filters */}
+              <div className="d-flex gap-2 mb-3 overflow-auto pb-1">
+                {['All Complaints', 'Pending', 'Assigned', 'Critical', 'Vehicles', 'Routes'].map(filter => (
+                  <button
+                    key={filter}
+                    onClick={() => setMapFilter(filter)}
+                    className={`btn btn-sm rounded-pill px-3 fw-bold ${mapFilter === filter ? 'btn-dark' : 'btn-outline-secondary bg-white'}`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+
+              {/* Map & Side Panel Container */}
+              <div className="row g-3 flex-grow-1 min-h-0">
+                
+                {/* Map Area */}
+                <div className="col-lg-8 h-100">
+                  <div className="position-relative rounded-4 border overflow-hidden shadow-sm h-100" style={{ minHeight: '400px' }}>
+                    <MapContainer center={mapCenter} zoom={12} style={{ height: '100%', width: '100%' }}>
+                      <ChangeMapView center={mapCenter} />
+                      <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
+                      />
+                      
+                      {/* Plot Complaints */}
+                      {mapFilter !== 'Vehicles' && displayComplaints.map(c => {
+                        const priority = getComplaintPriority(c);
+                        return (
+                          <Marker 
+                            key={c.id} 
+                            position={[c.lat, c.lng]} 
+                            icon={getComplaintMarkerIcon(priority)}
+                            eventHandlers={{ click: () => setSelectedMapComplaint(c) }}
+                          >
+                            <Popup>
+                              <div className="p-1 text-start" style={{ minWidth: '200px' }}>
+                                <div className="d-flex justify-content-between align-items-start mb-2">
+                                  <h6 className="fw-bold mb-0 fs-7 text-dark">{c.id}</h6>
+                                  <span className={`badge fs-8 ${priority === 'Critical' ? 'bg-danger' : priority === 'Medium' ? 'bg-warning text-dark' : 'bg-success'}`}>{priority}</span>
+                                </div>
+                                <p className="fs-7 fw-semibold mb-1">{c.title}</p>
+                                <p className="fs-8 text-muted mb-2">{c.desc}</p>
+                                <div className="d-flex flex-column gap-1 fs-8 text-secondary mb-3">
+                                  <span><strong>Status:</strong> {c.status}</span>
+                                  <span><strong>Category:</strong> {c.type}</span>
+                                  <span><strong>Created:</strong> {c.createdAt}</span>
+                                </div>
+                                {c.status === 'Pending' && (
+                                  <button 
+                                    className="btn btn-primary btn-sm w-100 fw-bold fs-8"
+                                    onClick={() => navigate('/dashboard/authority/assignment-dispatch', { state: { complaint: c } })}
+                                  >
+                                    Assign Vehicle
+                                  </button>
+                                )}
+                              </div>
+                            </Popup>
+                          </Marker>
+                        );
+                      })}
+
+                      {/* Plot Vehicles */}
+                      {(mapFilter === 'All Complaints' || mapFilter === 'Vehicles' || mapFilter === 'Routes') && vehicles.map(v => {
+                        let vLat = v.lat;
+                        let vLng = v.lng;
+                        if (vLat === undefined || vLng === undefined) {
+                          vLat = 11.0168;
+                          vLng = 76.9558;
+                        }
+                        const util = v.capacity > 0 ? Math.round((v.load / v.capacity) * 100) : 0;
+                        return (
+                          <Marker 
+                            key={v.id} 
+                            position={[vLat, vLng]} 
+                            icon={getVehicleMarkerIcon(v.status)}
+                          >
+                            <Popup>
+                              <div className="p-1 text-start" style={{ minWidth: '180px' }}>
+                                <h6 className="fw-bold mb-1 fs-7">{v.id}</h6>
+                                <span className="badge bg-secondary-subtle text-secondary px-2 py-1 fs-8 d-inline-block mb-2">{v.status}</span>
+                                <div className="d-flex flex-column gap-1 fs-8 text-muted">
+                                  <span><strong>Driver:</strong> {v.driver}</span>
+                                  <span><strong>Fuel:</strong> {v.fuel}</span>
+                                  <div className="mt-1">
+                                    <div className="d-flex justify-content-between">
+                                      <span><strong>Load:</strong> {v.load} / {v.capacity} kg</span>
+                                      <span>{util}%</span>
+                                    </div>
+                                    <div className="progress mt-1" style={{ height: '4px' }}>
+                                      <div className={`progress-bar ${util > 80 ? 'bg-danger' : 'bg-success'}`} style={{ width: `${util}%` }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        );
+                      })}
+
+                      {/* Routes Visualization */}
+                      {(mapFilter === 'All Complaints' || mapFilter === 'Routes' || selectedMapComplaint) && (() => {
+                        const lines = [];
+                        
+                        // 1. If a pending complaint is selected, show recommended blue line
+                        if (selectedMapComplaint && selectedMapComplaint.status === 'Pending') {
+                          const nearest = getNearestVehicle(selectedMapComplaint);
+                          if (nearest && nearest.lat) {
+                            lines.push(
+                              <Polyline 
+                                key={`rec-${selectedMapComplaint.id}`} 
+                                positions={[[selectedMapComplaint.lat, selectedMapComplaint.lng], [nearest.lat, nearest.lng]]} 
+                                color="#3b82f6" 
+                                weight={4} 
+                                dashArray="8, 8" 
+                              />
+                            );
+                          }
+                        }
+
+                        // 2. Active Assignment Routes (Green)
+                        complaints.filter(c => c.status === 'Assigned' && c.vehicleId).forEach(c => {
+                          const assignedVehicle = vehicles.find(v => v.id === c.vehicleId);
+                          if (assignedVehicle) {
+                            let vLat = assignedVehicle.lat;
+                            let vLng = assignedVehicle.lng;
+                            if (vLat === undefined || vLng === undefined) {
+                              vLat = 11.0168;
+                              vLng = 76.9558;
+                            }
+                            lines.push(
+                              <Polyline 
+                                key={`asn-${c.id}`} 
+                                positions={[[c.lat, c.lng], [vLat, vLng]]} 
+                                color="#10b981" 
+                                weight={3} 
+                              />
+                            );
+                          }
+                        });
+
+                        return lines;
+                      })()}
+                    </MapContainer>
+                  </div>
+                </div>
+
+                {/* Dispatch Panel */}
+                <div className="col-lg-4 h-100">
+                  <div className="card border-0 shadow-sm rounded-4 p-3 h-100 d-flex flex-column bg-white">
+                    <h5 className="fw-black text-slate-800 mb-3 d-flex align-items-center gap-2 border-bottom pb-2">
+                      <FaMapMarkedAlt className="text-primary" /> Recommended Dispatches
+                    </h5>
+                    
+                    <div className="flex-grow-1 overflow-auto pe-2 d-flex flex-column gap-3">
+                      {complaints.filter(c => c.status === 'Pending').map(c => {
+                        const priority = getComplaintPriority(c);
+                        const nearest = getNearestVehicle(c);
+                        
+                        return (
+                          <div 
+                            key={c.id} 
+                            className={`p-3 border rounded-3 cursor-pointer transition-all ${selectedMapComplaint?.id === c.id ? 'border-primary bg-primary-subtle' : 'hover-bg-light'}`}
+                            onClick={() => {
+                              setSelectedMapComplaint(c);
+                              setMapCenter([c.lat, c.lng]);
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div className="d-flex justify-content-between align-items-start mb-2">
+                              <strong className="fs-6 text-dark">{c.id}</strong>
+                              <span className={`badge fs-8 ${priority === 'Critical' ? 'bg-danger' : priority === 'Medium' ? 'bg-warning text-dark' : 'bg-success'}`}>
+                                {priority}
+                              </span>
+                            </div>
+                            
+                            {nearest ? (
+                              <div className="bg-white rounded border p-2 mb-2 fs-8">
+                                <div className="text-muted mb-1">Recommended Vehicle:</div>
+                                <div className="d-flex justify-content-between align-items-center">
+                                  <strong className="text-primary d-flex align-items-center gap-1"><FaTruck /> {nearest.id}</strong>
+                                  <span className="text-success fw-bold">ETA: {nearest.eta} mins</span>
+                                </div>
+                                <div className="text-muted mt-1">Distance: {nearest.distance} km</div>
+                              </div>
+                            ) : (
+                              <div className="text-danger fs-8 mb-2">No active vehicles available.</div>
+                            )}
+
+                            <button 
+                              className="btn btn-sm btn-dark w-100 fw-bold fs-8 d-flex align-items-center justify-content-center gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/dashboard/authority/assignment-dispatch', { state: { complaint: c } });
+                              }}
+                            >
+                              Assign <FaArrowRight size={10} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {complaints.filter(c => c.status === 'Pending').length === 0 && (
+                        <div className="text-center text-muted py-5 mt-4">
+                          <FaCheck size={32} className="mb-2 text-success opacity-50" />
+                          <p>No pending complaints.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TAB 2: COMPLAINT MANAGEMENT */}
         {activeTab === 2 && (
@@ -485,33 +775,38 @@ const AuthorityDashboard = () => {
                         </td>
                         <td className="py-3 text-muted">{c.reporter}</td>
                         <td className="py-3">
-                          <span className={`badge px-2.5 py-1.5 rounded-pill fw-bold fs-8 ${c.status === 'Pending' ? 'bg-warning-subtle text-warning-emphasis' : c.status === 'In Progress' ? 'bg-info-subtle text-info-emphasis' : 'bg-success-subtle text-success'}`}>
+                          <span className={`badge px-2.5 py-1.5 rounded-pill fw-bold fs-8 ${c.status === 'Pending' ? 'bg-danger-subtle text-danger' : c.status === 'Assigned' ? 'bg-primary-subtle text-primary' : c.status === 'Awaiting Authority Verification' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-success-subtle text-success'}`}>
                             {c.status}
                           </span>
                         </td>
                         <td className="py-3 text-muted">{c.createdAt}</td>
                         <td className="py-3 text-center">
-                          <div className="d-flex justify-content-center gap-1">
+                          <div className="d-flex flex-column align-items-center justify-content-center gap-1">
                             {c.status === 'Pending' && (
                               <button 
-                                onClick={() => handleStatusUpdate(c.id, 'In Progress', 'worker@eco.com')}
-                                className="btn btn-outline-info py-1.5 px-3 fs-8 fw-bold"
+                                onClick={() => navigate('/dashboard/authority/assignment-dispatch', { state: { complaint: c } })}
+                                className="btn btn-primary py-1.5 px-3 fs-8 fw-bold text-uppercase tracking-wider"
                                 style={{ borderRadius: '6px' }}
                               >
-                                Dispatch Driver
+                                ASSIGN
                               </button>
                             )}
-                            {c.status === 'In Progress' && (
+                            {c.status === 'Assigned' && (
+                              <div className="text-center">
+                                {c.vehicleId && <span className="badge bg-secondary-subtle text-secondary border d-block mb-1">Vehicle: {c.vehicleId}</span>}
+                              </div>
+                            )}
+                            {c.status === 'Awaiting Authority Verification' && (
                               <button 
                                 onClick={() => handleStatusUpdate(c.id, 'Resolved')}
-                                className="btn btn-success py-1.5 px-3 fs-8 fw-bold"
+                                className="btn btn-warning py-1.5 px-3 fs-8 fw-bold"
                                 style={{ borderRadius: '6px' }}
                               >
-                                Resolve
+                                Verify Completion
                               </button>
                             )}
                             {c.status === 'Resolved' && (
-                              <span className="text-success p-1.5"><FaCheck /> Resolved</span>
+                              <span className="text-success p-1.5 fw-bold"><FaCheck /> Resolved</span>
                             )}
                           </div>
                         </td>
@@ -524,113 +819,8 @@ const AuthorityDashboard = () => {
           </div>
         )}
 
-        {/* TAB 3: ASSIGNMENT DISPATCH */}
+        {/* TAB 3: VEHICLE MANAGEMENT */}
         {activeTab === 3 && (
-          <div>
-            <h2 className="fw-black text-slate-900 mb-1">Assignment Dispatch</h2>
-            <p className="text-muted fs-7 mb-4">Organize collection routes and assign driver check-lists.</p>
-
-            <div className="row g-4">
-              <div className="col-lg-5">
-                <div className="card glass-card p-4 border-0 shadow-sm">
-                  <h5 className="fw-extrabold text-slate-800 mb-4">Create Route Assignment</h5>
-                  
-                  <form onSubmit={handleAssignSubmit}>
-                    <Stack spacing={3}>
-                      <FormControl fullWidth>
-                        <InputLabel>Select Driver</InputLabel>
-                        <Select
-                          value={selectedWorker}
-                          onChange={(e) => setSelectedWorker(e.target.value)}
-                          label="Select Driver"
-                          required
-                        >
-                          {workers.map(w => (
-                            <MenuItem key={w.email} value={w.email}>{w.name} ({w.truck})</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-
-                      <FormControl fullWidth>
-                        <InputLabel>Assign Bins</InputLabel>
-                        <Select
-                          multiple
-                          value={selectedBinIds}
-                          onChange={(e) => setSelectedBinIds(e.target.value)}
-                          input={<OutlinedInput label="Assign Bins" />}
-                          renderValue={(selected) => (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {selected.map((value) => (
-                                <Chip key={value} label={value} size="small" />
-                              ))}
-                            </Box>
-                          )}
-                        >
-                          {bins.map((bin) => (
-                            <MenuItem key={bin.id} value={bin.id}>
-                              <Checkbox checked={selectedBinIds.indexOf(bin.id) > -1} />
-                              <ListItemText primary={`${bin.id} - ${bin.name} (${bin.fillLevel}%)`} />
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-
-                      <button 
-                        type="submit" 
-                        className="btn btn-success w-100 py-3 fs-6 eco-btn-primary"
-                      >
-                        Dispatch Route
-                      </button>
-                    </Stack>
-                  </form>
-                </div>
-              </div>
-
-              <div className="col-lg-7">
-                <div className="card glass-card p-4 border-0 shadow-sm">
-                  <h5 className="fw-extrabold text-slate-800 mb-4">Active Assignments Log</h5>
-                  
-                  <div className="d-flex flex-column gap-4">
-                    {workers.map(worker => (
-                      <div key={worker.email} className="pb-3 border-bottom last-border-0">
-                        <div className="d-flex justify-content-between align-items-start">
-                          <div>
-                            <strong className="fs-6 text-slate-800">{worker.name}</strong>
-                            <span className="d-block fs-8 text-muted">Vehicle Assigned: {worker.truck}</span>
-                          </div>
-                          <span className="badge bg-light text-secondary border px-2.5 py-1.5 rounded-pill fs-8">{worker.status}</span>
-                        </div>
-
-                        <div className="mt-3">
-                          <span className="fs-8 text-muted d-block mb-2">Bins to Collect:</span>
-                          <div className="d-flex flex-wrap gap-2">
-                            {worker.route.map(binId => {
-                              const b = bins.find(item => item.id === binId);
-                              return (
-                                <span 
-                                  key={binId} 
-                                  className={`badge px-2.5 py-1.5 rounded-pill fs-8 ${b && b.fillLevel >= 80 ? 'bg-danger-subtle text-danger border border-danger-subtle' : 'bg-light text-secondary border'}`}
-                                >
-                                  {binId} ({b ? b.fillLevel : 0}%)
-                                </span>
-                              );
-                            })}
-                            {worker.route.length === 0 && (
-                              <span className="fs-8 text-muted italic">Route Empty. Driver is on standby.</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: VEHICLE MANAGEMENT */}
-        {activeTab === 4 && (
           <div>
             <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4">
               <div>
@@ -698,8 +888,8 @@ const AuthorityDashboard = () => {
           </div>
         )}
 
-        {/* TAB 5: LABOR MANAGEMENT */}
-        {activeTab === 5 && (
+        {/* TAB 4: LABOR MANAGEMENT */}
+        {activeTab === 4 && (
           <div>
             <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4">
               <div>
@@ -720,18 +910,19 @@ const AuthorityDashboard = () => {
                   <thead className="table-light">
                     <tr className="fs-8 text-secondary uppercase fw-extrabold">
                       <th className="py-3 px-4">Staff Name</th>
-                      <th className="py-3">Contact Email</th>
+                      <th className="py-3">Mobile Number</th>
                       <th className="py-3">Assigned Truck</th>
                       <th className="py-3">Active Route Bins</th>
                       <th className="py-3">Performance Index</th>
                       <th className="py-3 text-center">Duty Status</th>
+                      <th className="py-3 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {workers.map((w, idx) => (
-                      <tr key={w.email} className="fs-7">
+                      <tr key={w.phone} className="fs-7">
                         <td className="py-3 px-4 fw-bold text-slate-800">{w.name}</td>
-                        <td className="py-3 text-muted">{w.email}</td>
+                        <td className="py-3 text-muted">{w.phone}</td>
                         <td className="py-3 font-monospace fw-bold">{w.truck || 'Unassigned'}</td>
                         <td className="py-3">
                           {w.route.length > 0 ? (
@@ -748,6 +939,20 @@ const AuthorityDashboard = () => {
                             {w.status}
                           </span>
                         </td>
+                        <td className="py-3 text-center">
+                          <button 
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => {
+                              setEditStaffId(w.id);
+                              setEditStaffName(w.name);
+                              setEditStaffPhone(w.phone);
+                              setEditStaffTruck(w.truck || 'Unassigned');
+                              setOpenEditStaff(true);
+                            }}
+                          >
+                            <FaEdit />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -757,8 +962,8 @@ const AuthorityDashboard = () => {
           </div>
         )}
 
-        {/* TAB 6: ANALYTICS REPORTS */}
-        {activeTab === 6 && (
+        {/* TAB 5: ANALYTICS REPORTS */}
+        {activeTab === 5 && (
           <div>
             <h2 className="fw-black text-slate-900 mb-1">Analytics & reports</h2>
             <p className="text-muted fs-7 mb-4">Detailed analytical trends mapping ticket complaints, statuses, and truck fleet utilization rates.</p>
@@ -1003,7 +1208,7 @@ const AuthorityDashboard = () => {
                 >
                   <MenuItem value="Unassigned">Leave Unassigned</MenuItem>
                   {workers.map(w => (
-                    <MenuItem key={w.email} value={w.name}>{w.name}</MenuItem>
+                    <MenuItem key={w.phone} value={w.name}>{w.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1042,13 +1247,13 @@ const AuthorityDashboard = () => {
                 placeholder="e.g. Ramesh Kumar"
               />
               <TextField 
-                label="Contact Email" 
+                label="Mobile Number" 
                 fullWidth 
                 required 
-                type="email"
-                value={newStaffEmail} 
-                onChange={(e) => setNewStaffEmail(e.target.value)} 
-                placeholder="e.g. ramesh@eco.com"
+                type="tel"
+                value={newStaffPhone} 
+                onChange={(e) => setNewStaffPhone(e.target.value)} 
+                placeholder="+916080661751"
               />
               <FormControl fullWidth>
                 <InputLabel>Assign Fleet Truck</InputLabel>
@@ -1078,6 +1283,61 @@ const AuthorityDashboard = () => {
               className="btn btn-success eco-btn-primary px-4"
             >
               Register Staff
+            </button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Dialog Modal: Edit Staff */}
+      <Dialog open={openEditStaff} onClose={() => setOpenEditStaff(false)} PaperProps={{ style: { borderRadius: '16px', padding: '12px' } }}>
+        <form onSubmit={handleEditStaffSubmit}>
+          <DialogTitle sx={{ fontWeight: 800 }}>Edit Staff Member</DialogTitle>
+          <DialogContent>
+            <Stack spacing={3} sx={{ mt: 1 }}>
+              <TextField 
+                label="Full Name" 
+                fullWidth 
+                required 
+                value={editStaffName} 
+                onChange={(e) => setEditStaffName(e.target.value)} 
+              />
+              <TextField 
+                label="Mobile Number" 
+                fullWidth 
+                required 
+                type="tel"
+                value={editStaffPhone} 
+                onChange={(e) => setEditStaffPhone(e.target.value)} 
+                placeholder="+916080661751"
+              />
+              <FormControl fullWidth>
+                <InputLabel>Assign Fleet Truck</InputLabel>
+                <Select
+                  value={editStaffTruck}
+                  onChange={(e) => setEditStaffTruck(e.target.value)}
+                  label="Assign Fleet Truck"
+                >
+                  <MenuItem value="Unassigned">Leave Unassigned</MenuItem>
+                  {vehicles.map(v => (
+                    <MenuItem key={v.id} value={v.id}>{v.id} ({v.model})</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 3 }}>
+            <button 
+              type="button" 
+              onClick={() => setOpenEditStaff(false)} 
+              className="btn btn-link text-muted text-decoration-none fw-bold me-2 fs-7"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              className="btn btn-primary px-4"
+            >
+              Save Changes
             </button>
           </DialogActions>
         </form>

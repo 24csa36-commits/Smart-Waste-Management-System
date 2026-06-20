@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import { auth, googleProvider } from '../firebaseConfig';
+import { signInWithPopup } from 'firebase/auth';
 
 const AppContext = createContext();
 
@@ -21,14 +23,22 @@ const INITIAL_COMPLAINTS = [
 ];
 
 const INITIAL_WORKERS = [
-  { email: 'worker@eco.com', name: 'John Doe', truck: 'TRUCK-Eco99', status: 'Active', route: ['BIN-03', 'BIN-01'] },
-  { email: 'driver2@eco.com', name: 'Sarah Connor', truck: 'TRUCK-Green77', status: 'Active', route: ['BIN-05'] }
+  { id: 'W001', name: 'John Doe', phone: '+919876543210', truck: 'TRUCK-Eco99', status: 'Active', route: ['BIN-03', 'BIN-01'] },
+  { id: 'W002', name: 'Sarah Connor', phone: '+919876543211', truck: 'TRUCK-Green77', status: 'Active', route: ['BIN-05'] }
 ];
 
 const INITIAL_VEHICLES = [
-  { id: 'TRUCK-Eco99', model: 'E-Garbage Lifter XL', driver: 'John Doe', capacity: 500, load: 380, fuel: 'Electric', status: 'Active' },
-  { id: 'TRUCK-Green77', model: 'CNG Pack-Compactor', driver: 'Sarah Connor', capacity: 600, load: 180, fuel: 'CNG', status: 'Active' },
-  { id: 'TRUCK-Power44', model: 'Diesel Heavy Hauler', driver: 'Unassigned', capacity: 800, load: 0, fuel: 'Diesel', status: 'Idle' }
+  { id: 'TRUCK-Eco99', model: 'E-Garbage Lifter XL', driver: 'John Doe', capacity: 500, load: 380, fuel: 'Electric', status: 'Available', lat: 11.0180, lng: 76.9600 },
+  { id: 'TRUCK-Green77', model: 'CNG Pack-Compactor', driver: 'Sarah Connor', capacity: 600, load: 180, fuel: 'CNG', status: 'Available', lat: 10.9900, lng: 76.9700 },
+  { id: 'TRUCK-Power44', model: 'Diesel Heavy Hauler', driver: 'Unassigned', capacity: 800, load: 0, fuel: 'Diesel', status: 'Available', lat: 11.0000, lng: 76.9800 }
+];
+
+const INITIAL_LABORERS = [
+  { id: 'LAB-01', name: 'Ravi', phone: '9876543210', vehicleId: 'TRUCK-Eco99', status: 'Active' },
+  { id: 'LAB-02', name: 'Mani', phone: '9876543211', vehicleId: 'TRUCK-Eco99', status: 'Active' },
+  { id: 'LAB-03', name: 'Suresh', phone: '9876543212', vehicleId: 'TRUCK-Eco99', status: 'Active' },
+  { id: 'LAB-04', name: 'Karthik', phone: '9876543213', vehicleId: 'TRUCK-Green77', status: 'Active' },
+  { id: 'LAB-05', name: 'Vijay', phone: '9876543214', vehicleId: 'TRUCK-Green77', status: 'Active' }
 ];
 
 const REWARDS_CATALOG = [
@@ -66,6 +76,11 @@ export const AppProvider = ({ children }) => {
   const [vehicles, setVehicles] = useState(() => {
     const saved = localStorage.getItem('swms_vehicles');
     return saved ? JSON.parse(saved) : INITIAL_VEHICLES;
+  });
+
+  const [laborers, setLaborers] = useState(() => {
+    const saved = localStorage.getItem('swms_laborers');
+    return saved ? JSON.parse(saved) : INITIAL_LABORERS;
   });
 
   const [citizenPoints, setCitizenPoints] = useState(() => {
@@ -115,6 +130,10 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('swms_vehicles', JSON.stringify(vehicles));
   }, [vehicles]);
+
+  useEffect(() => {
+    localStorage.setItem('swms_laborers', JSON.stringify(laborers));
+  }, [laborers]);
 
   useEffect(() => {
     localStorage.setItem('swms_citizen_points', citizenPoints.toString());
@@ -167,7 +186,7 @@ export const AppProvider = ({ children }) => {
         setUserType('worker');
         return { success: true };
       }
-      return { success: false, message: 'Invalid Worker credentials (try worker@eco.com / worker123)' };
+      return { success: false, message: 'Invalid Worker credentials' };
     }
 
     if (type === 'public') {
@@ -184,6 +203,53 @@ export const AppProvider = ({ children }) => {
     }
 
     return { success: false, message: 'Invalid portal selection' };
+  };
+
+  const validateWorkerPhone = (phone) => {
+    // If testing on generic format or specific number, ensure strict match
+    const worker = workers.find(w => w.phone === phone);
+    if (!worker) {
+      return { success: false, message: 'Worker not registered by Municipal Authority.' };
+    }
+    return { success: true, worker };
+  };
+
+  const completeWorkerLogin = (worker) => {
+    setCurrentUser(worker);
+    setUserType('worker');
+    return { success: true };
+  };
+
+  const loginWithGoogle = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      
+      const citizenData = {
+        name: user.displayName || 'Citizen',
+        email: user.email,
+        photoURL: user.photoURL,
+        uid: user.uid,
+        role: 'citizen'
+      };
+
+      // Store in localStorage if new
+      const citizens = JSON.parse(localStorage.getItem('swms_citizens') || '[]');
+      if (!citizens.some(c => c.email === user.email)) {
+        citizens.push(citizenData);
+        localStorage.setItem('swms_citizens', JSON.stringify(citizens));
+      }
+
+      setCurrentUser(citizenData);
+      setUserType('public');
+      localStorage.setItem('swms_user_type', 'public');
+      localStorage.setItem('swms_current_user', JSON.stringify(citizenData));
+
+      return { success: true };
+    } catch (error) {
+      console.error(error);
+      return { success: false, message: error.message };
+    }
   };
 
   const registerUser = (name, email, password, type, extra = {}) => {
@@ -274,13 +340,13 @@ export const AppProvider = ({ children }) => {
     return newComp;
   };
 
-  const updateComplaintStatus = async (id, status, workerEmail = null) => {
+  const updateComplaintStatus = async (id, status, workerPhone = null) => {
     let updatedComplaint = null;
 
     setComplaints(prev => prev.map(c => {
       if (c.id === id) {
         updatedComplaint = { ...c, status };
-        if (workerEmail) updatedComplaint.assignedTo = workerEmail;
+        if (workerPhone) updatedComplaint.assignedTo = workerPhone;
         return updatedComplaint;
       }
       return c;
@@ -291,6 +357,61 @@ export const AppProvider = ({ children }) => {
         await axios.put(`${BACKEND_URL}/complaints/${id}`, updatedComplaint);
       } catch (err) {
         console.warn('API error updating ticket: saved locally.');
+      }
+    }
+  };
+
+  const dispatchAssignment = async (complaintId, vehicleId, vehicleNumber, driverName, laborersList) => {
+    let updatedComplaint = null;
+    const assignedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    setComplaints(prev => prev.map(c => {
+      if (c.id === complaintId) {
+        updatedComplaint = { 
+          ...c, 
+          status: 'Assigned', 
+          vehicleId, 
+          vehicleNumber,
+          driver: driverName,
+          laborers: laborersList,
+          assignedAt 
+        };
+        return updatedComplaint;
+      }
+      return c;
+    }));
+
+    if (isBackendOnline && updatedComplaint) {
+      try {
+        await axios.put(`${BACKEND_URL}/complaints/${complaintId}`, updatedComplaint);
+      } catch (err) {
+        console.warn('API error dispatching assignment: saved locally.');
+      }
+    }
+  };
+
+  const resolveComplaintTask = async (complaintId, workerPhone) => {
+    let updatedComplaint = null;
+    const finalStatus = 'Awaiting Authority Verification';
+
+    setComplaints(prev => prev.map(c => {
+      if (c.id === complaintId) {
+        updatedComplaint = { 
+          ...c, 
+          status: finalStatus, 
+          completedBy: workerPhone,
+          completedAt: new Date().toISOString().replace('T', ' ').slice(0, 16) 
+        };
+        return updatedComplaint;
+      }
+      return c;
+    }));
+
+    if (isBackendOnline && updatedComplaint) {
+      try {
+        await axios.put(`${BACKEND_URL}/complaints/${complaintId}`, updatedComplaint);
+      } catch (err) {
+        console.warn('API error resolving task: saved locally.');
       }
     }
   };
@@ -332,26 +453,26 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const assignRoute = async (workerEmail, binIds) => {
-    setWorkers(prev => prev.map(w => w.email === workerEmail ? { ...w, route: binIds } : w));
-    if (currentUser && currentUser.email === workerEmail) {
+  const assignRoute = async (workerPhone, binIds) => {
+    setWorkers(prev => prev.map(w => w.phone === workerPhone ? { ...w, route: binIds } : w));
+    if (currentUser && currentUser.phone === workerPhone) {
       setCurrentUser(prev => ({ ...prev, route: binIds }));
     }
 
     if (isBackendOnline) {
       try {
-        await axios.patch(`${BACKEND_URL}/workers/${workerEmail}`, { route: binIds });
+        await axios.patch(`${BACKEND_URL}/workers/${encodeURIComponent(workerPhone)}`, { route: binIds });
       } catch (err) {
         console.warn('API error dispatching route: saved locally.');
       }
     }
   };
 
-  const addStaff = async (name, email, truck) => {
-    if (workers.some(w => w.email === email)) {
-      return { success: false, message: 'Staff email already registered' };
+  const addStaff = async (name, phone, truck) => {
+    if (workers.some(w => w.phone === phone)) {
+      return { success: false, message: 'Staff phone already registered' };
     }
-    const newStaff = { email, name, truck: truck === 'Unassigned' ? '' : truck, status: 'Active', route: [] };
+    const newStaff = { id: `W${Math.floor(100 + Math.random() * 900)}`, phone, name, truck: truck === 'Unassigned' ? '' : truck, status: 'Active', route: [] };
     setWorkers(prev => [...prev, newStaff]);
 
     if (truck !== 'Unassigned') {
@@ -367,6 +488,37 @@ export const AppProvider = ({ children }) => {
     }
     return { success: true };
   };
+
+  const updateStaff = async (id, name, phone, truck) => {
+    let updatedStaff = null;
+    setWorkers(prev => prev.map(w => {
+      if (w.id === id) {
+        updatedStaff = { ...w, name, phone, truck: truck === 'Unassigned' ? '' : truck };
+        return updatedStaff;
+      }
+      return w;
+    }));
+
+    if (truck !== 'Unassigned') {
+      updateVehicleStatus(truck, 'Active', name);
+    }
+
+    if (isBackendOnline && updatedStaff) {
+      try {
+        // Find by internal json-server ID if possible, but our mock ID is 'id'.
+        // Assuming mock backend maps 'id' correctly for put request.
+        // db.json should match the `id` field.
+        const res = await axios.get(`${BACKEND_URL}/workers?id=${id}`);
+        if (res.data && res.data.length > 0) {
+           await axios.put(`${BACKEND_URL}/workers/${res.data[0].id}`, updatedStaff);
+        }
+      } catch (err) {
+        console.warn('API error updating staff: saved locally.');
+      }
+    }
+    return { success: true };
+  };
+
 
   const addVehicle = async (id, model, driver, capacity, fuel) => {
     const newVehicle = { id, model, driver, capacity: parseInt(capacity), load: 0, fuel, status: 'Idle' };
@@ -402,7 +554,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const completeCollection = async (workerEmail, binId) => {
+  const completeCollection = async (workerPhone, binId) => {
     const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
     
     // Reset bin fillLevel locally
@@ -415,9 +567,9 @@ export const AppProvider = ({ children }) => {
     // Clear route from driver locally
     let nextRoute = [];
     setWorkers(prev => prev.map(w => {
-      if (w.email === workerEmail) {
+      if (w.phone === workerPhone) {
         nextRoute = w.route.filter(id => id !== binId);
-        if (currentUser && currentUser.email === workerEmail) {
+        if (currentUser && currentUser.phone === workerPhone) {
           setCurrentUser(prevUser => ({ ...prevUser, route: nextRoute }));
         }
         return { ...w, route: nextRoute };
@@ -435,7 +587,7 @@ export const AppProvider = ({ children }) => {
             lastEmptied: timestamp
           });
         }
-        await axios.patch(`${BACKEND_URL}/workers/${workerEmail}`, { route: nextRoute });
+        await axios.patch(`${BACKEND_URL}/workers/${encodeURIComponent(workerPhone)}`, { route: nextRoute });
       } catch (err) {
         console.warn('API error completing collection: saved locally.');
       }
@@ -500,6 +652,9 @@ export const AppProvider = ({ children }) => {
       pointsHistory,
       rewardsCatalog: REWARDS_CATALOG,
       loginUser,
+      loginWithGoogle,
+      validateWorkerPhone,
+      completeWorkerLogin,
       registerUser,
       logoutUser,
       addComplaint,
@@ -508,11 +663,15 @@ export const AppProvider = ({ children }) => {
       updateBinFillLevel,
       assignRoute,
       addStaff,
+      updateStaff,
       addVehicle,
       updateVehicleStatus,
       completeCollection,
       earnPoints,
-      redeemReward
+      redeemReward,
+      laborers,
+      dispatchAssignment,
+      resolveComplaintTask
     }}>
       {children}
     </AppContext.Provider>

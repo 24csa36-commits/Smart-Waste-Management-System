@@ -41,9 +41,11 @@ const getWorkerMarkerIcon = (fillLevel) => {
 
 const WorkerDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser, bins, logoutUser, completeCollection, addComplaint } = useApp();
+  const { currentUser, bins, complaints, laborers, logoutUser, completeCollection, addComplaint, resolveComplaintTask } = useApp();
 
   const [activeTab, setActiveTab] = useState(0);
+
+  const [photoUpload, setPhotoUpload] = useState(false);
 
   // Issue/Hazard Form State
   const [hazardTitle, setHazardTitle] = useState('');
@@ -113,7 +115,7 @@ const WorkerDashboard = () => {
           <div className="list-group list-group-flush gap-2">
             {[
               { id: 0, label: 'My Active Route', icon: <FaList /> },
-              { id: 1, label: 'Report Hazard', icon: <FaExclamationTriangle /> },
+              { id: 3, label: 'Assigned Tasks', icon: <FaShieldAlt /> },
               { id: 2, label: 'Shift Stats', icon: <FaCalendarCheck /> }
             ].map(tab => (
               <button
@@ -251,83 +253,7 @@ const WorkerDashboard = () => {
           </div>
         )}
 
-        {/* TAB 1: REPORT HAZARD */}
-        {activeTab === 1 && (
-          <div className="text-start">
-            <h2 className="fw-black text-slate-900 mb-1">Report Damaged IoT Bin / Hazard</h2>
-            <p className="text-muted fs-7 mb-4">Alert municipal admin if you detect blocked routes, overflowing dumps, or damaged physical bins.</p>
 
-            <div className="row justify-content-center">
-              <div className="col-12 col-md-7">
-                <div className="card glass-card p-4 border-0 shadow-sm">
-                  <form onSubmit={handleHazardSubmit}>
-                    <Stack spacing={3}>
-                      <TextField 
-                        label="Issue / Hazard Summary" 
-                        placeholder="e.g. Bin physical lock broken, vehicle blocking access"
-                        fullWidth 
-                        required 
-                        value={hazardTitle} 
-                        onChange={(e) => setHazardTitle(e.target.value)}
-                      />
-
-                      <div className="row g-3">
-                        <div className="col-6">
-                          <FormControl fullWidth>
-                            <InputLabel>Type</InputLabel>
-                            <Select
-                              value={hazardType}
-                              onChange={(e) => setHazardType(e.target.value)}
-                              label="Type"
-                            >
-                              <MenuItem value="General">General Issue</MenuItem>
-                              <MenuItem value="Hazardous">Hazardous Dump</MenuItem>
-                              <MenuItem value="Maintenance">Damage/Repair Required</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </div>
-                        <div className="col-6">
-                          <FormControl fullWidth>
-                            <InputLabel>Select smart Bin</InputLabel>
-                            <Select
-                              value={hazardBinId}
-                              onChange={(e) => setHazardBinId(e.target.value)}
-                              label="Select smart Bin"
-                            >
-                              <MenuItem value="">Not specific (General area)</MenuItem>
-                              {bins.map(b => (
-                                <MenuItem key={b.id} value={b.id}>{b.id} - {b.name}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </div>
-                      </div>
-
-                      <TextField 
-                        label="Provide detailed description" 
-                        multiline 
-                        rows={4}
-                        placeholder="Please give specifics (e.g. details of the damage, access block details...)"
-                        fullWidth 
-                        required 
-                        value={hazardDesc} 
-                        onChange={(e) => setHazardDesc(e.target.value)}
-                      />
-
-                      <button 
-                        type="submit" 
-                        className="btn btn-danger py-3 fs-6 w-100 fw-bold border-0 shadow-sm text-white"
-                        style={{ background: '#ef4444', borderRadius: '12px' }}
-                      >
-                        Send Alert to Control
-                      </button>
-                    </Stack>
-                  </form>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* TAB 2: SHIFT STATS */}
         {activeTab === 2 && (
@@ -355,6 +281,90 @@ const WorkerDashboard = () => {
             </div>
           </div>
         )}
+
+        {/* TAB 3: ASSIGNED TASKS (Dispatched) */}
+        {activeTab === 3 && (() => {
+          const assignedTasks = complaints.filter(c => 
+            (c.status === 'Assigned' || c.status === 'Awaiting Authority Verification') && 
+            (c.vehicleId === currentUser?.truck || c.assignedTo === currentUser?.email)
+          );
+          const teamMembers = laborers ? laborers.filter(l => l.vehicleId === currentUser?.truck) : [];
+
+          return (
+            <div className="text-start">
+              <h2 className="fw-black text-slate-900 mb-1">Dispatched Tasks</h2>
+              <p className="text-muted fs-7 mb-4">Urgent or scheduled complaint tasks assigned to your vehicle team.</p>
+
+              <div className="row g-4">
+                {assignedTasks.map(task => (
+                  <div className="col-12" key={task.id}>
+                    <div className="card glass-card p-4 border-0 shadow-sm text-start">
+                      <div className="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                          <h6 className="fw-extrabold text-slate-800 mb-1">Task ID: {task.id}</h6>
+                          <span className="badge bg-info-subtle text-info-emphasis px-2 py-1 fs-8 fw-bold">Status: {task.status}</span>
+                        </div>
+                        <span className="text-muted fs-8">Dispatched: {task.dispatchTime}</span>
+                      </div>
+                      
+                      <div className="row mb-3 fs-7">
+                        <div className="col-md-6 mb-2">
+                          <strong className="d-block text-slate-800">Location</strong>
+                          <span className="text-danger"><FaMapMarkedAlt /> {task.lat.toFixed(5)}, {task.lng.toFixed(5)}</span>
+                        </div>
+                        <div className="col-md-6 mb-2">
+                          <strong className="d-block text-slate-800">Vehicle Assigned</strong>
+                          <span className="text-muted">{task.vehicleId || currentUser?.truck}</span>
+                        </div>
+                        <div className="col-12 mt-2">
+                          <strong className="d-block text-slate-800">Description</strong>
+                          <span className="text-muted">{task.title} - {task.desc}</span>
+                        </div>
+                        <div className="col-12 mt-3">
+                          <strong className="d-block text-slate-800 mb-1">Team Members Assigned:</strong>
+                          <div className="d-flex gap-2 flex-wrap">
+                            {teamMembers.map(tm => (
+                              <span key={tm.id} className="badge bg-secondary-subtle text-secondary px-2 py-1 fs-8">
+                                {tm.name} ({tm.id})
+                              </span>
+                            ))}
+                            {teamMembers.length === 0 && <span className="text-muted italic fs-8">No specific laborers found.</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-3 border-top d-flex justify-content-end">
+                        {task.status === 'Assigned' ? (
+                          <button 
+                            className="btn btn-success fw-bold px-4 py-2 eco-btn-primary d-flex align-items-center justify-content-center gap-2"
+                            onClick={() => {
+                              resolveComplaintTask(task.id, currentUser?.email);
+                              toast.success("Task completed. Awaiting Authority Verification.");
+                            }}
+                          >
+                            <FaCheck /> Mark Completed
+                          </button>
+                        ) : (
+                          <span className="text-warning fw-bold d-flex align-items-center gap-1">
+                            <FaShieldAlt /> Awaiting Verification
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {assignedTasks.length === 0 && (
+                  <div className="col-12 text-center py-5">
+                    <FaCheck size={48} className="text-success mb-3 opacity-50" />
+                    <h5 className="text-slate-800">No Pending Dispatches</h5>
+                    <p className="text-muted">You are all caught up! Keep monitoring the route.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     </div>

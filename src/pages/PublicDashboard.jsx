@@ -265,7 +265,6 @@ const PublicDashboard = () => {
           <div className="list-group list-group-flush gap-2">
             {[
               { id: 0, label: 'Dashboard & Points', icon: <FaCoins /> },
-              { id: 1, label: 'Smart Bin Finder', icon: <FaMapMarkedAlt /> },
               { id: 2, label: 'Report Overflow', icon: <FaExclamationTriangle /> },
               { id: 3, label: 'Gift Catalog', icon: <FaGift /> }
             ].map(tab => (
@@ -424,59 +423,7 @@ const PublicDashboard = () => {
           </div>
         )}
 
-        {/* TAB 1: SMART BIN FINDER */}
-        {activeTab === 1 && (
-          <div className="text-start d-flex flex-column flex-grow-1" style={{ height: 'calc(100vh - 80px)' }}>
-            <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-3">
-              <div>
-                <h2 className="fw-black text-slate-900 mb-1">Smart Bin Finder</h2>
-                <p className="text-muted fs-7 mb-0">Locate garbage disposal containers nearest to you and check fill level.</p>
-              </div>
 
-              <FormControl sx={{ minWidth: 160 }} size="small">
-                <InputLabel>Filter Category</InputLabel>
-                <Select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  label="Filter Category"
-                >
-                  <MenuItem value="All">All Categories</MenuItem>
-                  <MenuItem value="General">General</MenuItem>
-                  <MenuItem value="Recyclable">Recyclable</MenuItem>
-                  <MenuItem value="Organic">Organic</MenuItem>
-                  <MenuItem value="Hazardous">Hazardous</MenuItem>
-                </Select>
-              </FormControl>
-            </div>
-
-            <div className="flex-grow-1 position-relative rounded-4 border overflow-hidden shadow-sm" style={{ minHeight: '380px' }}>
-              <MapContainer center={[11.0168, 76.9558]} zoom={13} style={{ height: '100%', width: '100%' }}>
-                <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
-                />
-                {filteredBins.map(bin => (
-                  <Marker 
-                    key={bin.id} 
-                    position={[bin.lat, bin.lng]} 
-                    icon={getBinMarkerIcon(bin.fillLevel)}
-                  >
-                    <Popup>
-                      <div className="p-1 text-start" style={{ minWidth: '150px' }}>
-                        <h6 className="fw-bold mb-1 fs-7">{bin.name}</h6>
-                        <span className="d-block fs-8 text-muted mb-2">Category: <b>{bin.type}</b></span>
-                        <div className="d-flex align-items-center justify-content-between mb-1">
-                          <span className="fs-8 text-muted">Fill Rate:</span>
-                          <strong className={`fs-8 ${bin.fillLevel >= 80 ? 'text-danger' : bin.fillLevel >= 50 ? 'text-warning' : 'text-success'}`}>{bin.fillLevel}%</strong>
-                        </div>
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
-              </MapContainer>
-            </div>
-          </div>
-        )}
 
         {/* TAB 2: REPORT OVERFLOW */}
         {activeTab === 2 && (

@@ -1,41 +1,93 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
   Stack, 
   TextField, 
-  InputAdornment, 
-  IconButton
+  InputAdornment
 } from '@mui/material';
-import { FaTruck, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaArrowLeft } from 'react-icons/fa';
+import { FaTruck, FaPhoneAlt, FaCommentDots, FaArrowLeft } from 'react-icons/fa';
 import { toast, ToastContainer } from 'react-toastify';
+import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import { auth } from '../firebaseConfig';
 
 const WorkerLogin = () => {
-  const { loginUser } = useApp();
+  const { validateWorkerPhone, completeWorkerLogin } = useApp();
   const navigate = useNavigate();
   
-  const [email, setEmail] = useState('worker@eco.com');
-  const [password, setPassword] = useState('worker123');
-  const [showPassword, setShowPassword] = useState(false);
+  const [phone, setPhone] = useState('+919876543210');
+  const [otp, setOtp] = useState('');
+  const [showOtpInput, setShowOtpInput] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    // Setup invisible recaptcha
+    if (!window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible'
+        });
+      } catch (err) {
+        console.warn("Recaptcha verifier error (can be ignored if hot-reloading)", err);
+      }
+    }
+  }, []);
+
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     setError('');
-
-    const res = loginUser(email, password, 'worker');
-    if (res.success) {
-      toast.success('Worker login successful!');
-      setTimeout(() => navigate('/dashboard/worker'), 800);
-    } else {
-      setError(res.message);
-      toast.error(res.message);
+    
+    // Validate with municipal database first
+    const validation = validateWorkerPhone(phone);
+    if (!validation.success) {
+      setError(validation.message);
+      toast.error(validation.message);
+      return;
     }
+
+    setLoading(true);
+    try {
+      const appVerifier = window.recaptchaVerifier;
+      const confirmationResult = await signInWithPhoneNumber(auth, phone, appVerifier);
+      window.confirmationResult = confirmationResult;
+      setShowOtpInput(true);
+      toast.success('OTP sent successfully!');
+    } catch (err) {
+      console.error(err);
+      setError('Failed to send OTP. Check your Firebase config.');
+      toast.error('Failed to send OTP.');
+    }
+    setLoading(false);
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const confirmationResult = window.confirmationResult;
+      await confirmationResult.confirm(otp);
+      
+      // Get worker details from database since they are verified
+      const validation = validateWorkerPhone(phone);
+      completeWorkerLogin(validation.worker);
+      
+      toast.success('Worker Verification Successful!');
+      setTimeout(() => navigate('/dashboard/worker'), 800);
+    } catch (err) {
+      console.error(err);
+      setError('Invalid verification code.');
+      toast.error('Invalid verification code.');
+    }
+    setLoading(false);
   };
 
   return (
     <div className="min-vh-100 d-flex align-items-center justify-content-center py-5" style={{ background: 'radial-gradient(circle at 10% 20%, rgba(245,158,11,0.15) 0%, rgba(15,23,42,0.95) 90%)' }}>
       <ToastContainer position="top-right" autoClose={2000} />
+      <div id="recaptcha-container"></div>
       <div className="container" style={{ maxWidth: '540px' }}>
         <button 
           onClick={() => navigate('/')}
@@ -50,7 +102,7 @@ const WorkerLogin = () => {
               <FaTruck size={32} />
             </div>
             <h3 className="fw-black mb-1">Worker Portal</h3>
-            <p className="text-secondary fs-7 mb-0">Collection Crews & Logistics Dispatcher</p>
+            <p className="text-secondary fs-7 mb-0">Secure Mobile Authentication</p>
           </div>
 
           {error && (
@@ -59,88 +111,98 @@ const WorkerLogin = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <Stack spacing={3}>
-              <TextField 
-                label="Worker Email" 
-                variant="outlined" 
-                fullWidth
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start" style={{ color: '#94a3b8' }}>
-                      <FaEnvelope />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{ 
-                  '& label': { color: '#94a3b8' },
-                  '& label.Mui-focused': { color: '#f59e0b' },
-                  '& .MuiOutlinedInput-root': {
+          {!showOtpInput ? (
+            <form onSubmit={handleSendOtp}>
+              <Stack spacing={3}>
+                <TextField 
+                  label="Mobile Number (with country code)" 
+                  variant="outlined" 
+                  fullWidth
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+91 9876543210"
+                  required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start" style={{ color: '#94a3b8' }}>
+                        <FaPhoneAlt />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ 
+                    '& label': { color: '#94a3b8' },
+                    '& label.Mui-focused': { color: '#f59e0b' },
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                      '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                      '&.Mui-focused fieldset': { borderColor: '#f59e0b' },
+                    }
+                  }}
+                />
+
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="btn btn-warning py-3 w-100 fw-bold border-0"
+                  style={{ 
+                    background: '#f59e0b', 
+                    color: '#000',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 24px -4px rgba(245, 158, 11, 0.4)'
+                  }}
+                >
+                  {loading ? 'Sending...' : 'Send OTP'}
+                </button>
+              </Stack>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOtp}>
+              <Stack spacing={3}>
+                <TextField 
+                  label="Verification Code (OTP)" 
+                  variant="outlined" 
+                  fullWidth
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder="123456"
+                  required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start" style={{ color: '#94a3b8' }}>
+                        <FaCommentDots />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ 
+                    '& label': { color: '#94a3b8' },
+                    '& label.Mui-focused': { color: '#f59e0b' },
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                      '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                      '&.Mui-focused fieldset': { borderColor: '#f59e0b' },
+                    }
+                  }}
+                />
+
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="btn btn-success py-3 w-100 fw-bold border-0"
+                  style={{ 
+                    background: '#10b981', 
                     color: '#fff',
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '&.Mui-focused fieldset': { borderColor: '#f59e0b' },
-                  }
-                }}
-              />
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 24px -4px rgba(16, 185, 129, 0.4)'
+                  }}
+                >
+                  {loading ? 'Verifying...' : 'Verify & Login'}
+                </button>
+              </Stack>
+            </form>
+          )}
 
-              <TextField 
-                label="Password" 
-                variant="outlined" 
-                type={showPassword ? 'text' : 'password'}
-                fullWidth
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start" style={{ color: '#94a3b8' }}>
-                      <FaLock />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={() => setShowPassword(!showPassword)} style={{ color: '#94a3b8' }}>
-                        {showPassword ? <FaEyeSlash /> : <FaEye />}
-                      </IconButton>
-                    </InputAdornment>
-                  )
-                }}
-                sx={{ 
-                  '& label': { color: '#94a3b8' },
-                  '& label.Mui-focused': { color: '#f59e0b' },
-                  '& .MuiOutlinedInput-root': {
-                    color: '#fff',
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '&.Mui-focused fieldset': { borderColor: '#f59e0b' },
-                  }
-                }}
-              />
-
-              <button 
-                type="submit" 
-                className="btn btn-warning py-3 w-100 fw-bold border-0"
-                style={{ 
-                  background: '#f59e0b', 
-                  color: '#000',
-                  borderRadius: '12px',
-                  boxShadow: '0 8px 24px -4px rgba(245, 158, 11, 0.4)'
-                }}
-              >
-                Log In as Driver
-              </button>
-            </Stack>
-          </form>
-
-          <div className="text-center mt-4 pt-2">
-            <span className="text-muted fs-7">
-              First job? Register truck: <Link to="/worker/register" style={{ color: '#f59e0b', fontWeight: 600, textDecoration: 'none' }}>Register here</Link>
-            </span>
-          </div>
         </div>
       </div>
     </div>

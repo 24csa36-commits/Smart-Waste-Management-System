@@ -7,17 +7,33 @@ import {
   InputAdornment, 
   IconButton
 } from '@mui/material';
-import { FaLeaf, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaArrowLeft } from 'react-icons/fa';
+import { FaLeaf, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaArrowLeft, FaGoogle } from 'react-icons/fa';
 import { toast, ToastContainer } from 'react-toastify';
 
 const PublicLogin = () => {
-  const { loginUser } = useApp();
+  const { loginUser, loginWithGoogle } = useApp();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('citizen@eco.com');
   const [password, setPassword] = useState('citizen123');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+
+  const handleGoogleLogin = async () => {
+    setError('');
+    const res = await loginWithGoogle();
+    if (res.success) {
+      toast.success('Google login successful!');
+      setTimeout(() => navigate('/dashboard/public'), 800);
+    } else {
+      if (res.message && res.message.includes('popup-closed-by-user')) {
+        toast.error('Login popup closed');
+      } else {
+        toast.error(res.message || 'Network Error');
+        setError(res.message || 'Network Error');
+      }
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -26,7 +42,7 @@ const PublicLogin = () => {
     const res = loginUser(email, password, 'public');
     if (res.success) {
       toast.success('Citizen login successful!');
-      setTimeout(() => navigate('/dashboard/citizen'), 800);
+      setTimeout(() => navigate('/dashboard/public'), 800);
     } else {
       setError(res.message);
       toast.error(res.message);
@@ -58,6 +74,21 @@ const PublicLogin = () => {
               {error}
             </div>
           )}
+
+          <button 
+            type="button" 
+            onClick={handleGoogleLogin}
+            className="btn btn-light w-100 py-3 fs-6 fw-bold border-0 d-flex align-items-center justify-content-center gap-2 mb-4 hover-bg-light"
+            style={{ borderRadius: '8px', color: '#334155', transition: 'all 0.2s' }}
+          >
+            <FaGoogle className="fs-5" style={{ color: '#ea4335' }} /> Continue with Google
+          </button>
+
+          <div className="d-flex align-items-center gap-3 mb-4 text-secondary fs-8">
+            <hr className="flex-grow-1 border-secondary opacity-25 m-0" />
+            <span className="opacity-75">OR</span>
+            <hr className="flex-grow-1 border-secondary opacity-25 m-0" />
+          </div>
 
           <form onSubmit={handleSubmit}>
             <Stack spacing={3}>
