@@ -57,6 +57,21 @@ import {
 import { toast, ToastContainer } from 'react-toastify';
 
 // Helpers for redesigned Command Center Map
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3; // metres
+  const φ1 = lat1 * Math.PI/180; // φ, λ in radians
+  const φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c; // in metres
+};
+
 const getComplaintPriority = (c) => {
   if (c.type === 'Hazardous' || c.desc.toLowerCase().includes('overflow') || c.title.toLowerCase().includes('overflow')) return 'Critical';
   if (c.status === 'Pending') return 'Medium';
@@ -766,8 +781,43 @@ const AuthorityDashboard = () => {
                               className="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 py-1 px-2 mt-1.5 fs-8 fw-bold border shadow-xs"
                               style={{ borderRadius: '6px' }}
                             >
-                              <FaCamera size={11} /> View Photo Evidence
+                              <FaCamera size={11} /> View Initial Photo
                             </button>
+                          )}
+                          {c.proofPhoto && (
+                            <div className="mt-2 p-2 bg-light border rounded">
+                              <strong className="d-block fs-8 text-slate-800 mb-1">Completion Verification:</strong>
+                              <button 
+                                onClick={() => {
+                                  setActiveEvidencePhoto(c.proofPhoto);
+                                  setActiveEvidenceTitle('Completion Proof: ' + c.id);
+                                  setOpenPhotoDialog(true);
+                                }}
+                                className="btn btn-sm btn-success d-inline-flex align-items-center gap-1 py-1 px-2 fs-8 fw-bold border shadow-xs mb-1"
+                                style={{ borderRadius: '6px' }}
+                              >
+                                <FaCamera size={11} /> View Proof Photo
+                              </button>
+                              {c.geoTag && (() => {
+                                const dist = calculateDistance(c.lat, c.lng, c.geoTag.lat, c.geoTag.lng);
+                                return (
+                                  <>
+                                    <span className="fs-8 d-block text-muted mt-1">
+                                      Completed at: {c.geoTag.lat.toFixed(5)}, {c.geoTag.lng.toFixed(5)} (Acc: {Math.round(c.geoTag.accuracy || 0)}m)
+                                    </span>
+                                    <a href={`https://www.google.com/maps?q=${c.geoTag.lat},${c.geoTag.lng}`} target="_blank" rel="noreferrer" className="fs-8 text-primary d-inline-flex align-items-center gap-1 mt-1 text-decoration-none">
+                                      <FaMapMarkedAlt size={10} /> Open in Google Maps
+                                    </a>
+                                    {dist > 500 && (
+                                      <div className="alert alert-warning py-1 px-2 mt-2 mb-0 fs-8 d-flex align-items-center gap-1" style={{ borderRadius: '6px' }}>
+                                        <FaExclamationTriangle size={12} />
+                                        <span>Warning: Completion location is {Math.round(dist)}m away from reported location!</span>
+                                      </div>
+                                    )}
+                                  </>
+                                )
+                              })()}
+                            </div>
                           )}
                         </td>
                         <td className="py-3">

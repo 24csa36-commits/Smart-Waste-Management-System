@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
@@ -20,7 +20,10 @@ import {
   FaCheck, 
   FaWrench,
   FaCalendarCheck,
-  FaShieldAlt
+  FaShieldAlt,
+  FaCamera,
+  FaTrash,
+  FaCrosshairs
 } from 'react-icons/fa';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
@@ -66,6 +69,101 @@ const WorkerDashboard = () => {
     logoutUser();
     toast.success('Logged out successfully');
     navigate('/');
+  };
+
+  // Camera & Geotag States for Completion Proof
+  const [photo, setPhoto] = useState(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [gpsLocked, setGpsLocked] = useState(false);
+  const [gpsCoordinates, setGpsCoordinates] = useState({ lat: null, lng: null, accuracy: null });
+  const [gpsFetching, setGpsFetching] = useState(false);
+  
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const startCamera = async () => {
+    setCameraActive(true);
+    setPhoto(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.warn("Could not access camera device stream, activating simulated camera capture.", err);
+      toast.info("Webcam stream access not found. Simulating high-tech snapshot capture!");
+    }
+  };
+
+  const captureSnapshot = () => {
+    if (streamRef.current && videoRef.current) {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      setPhoto(dataUrl);
+      stopCamera();
+      toast.success("Completion snapshot captured successfully!");
+    } else {
+      // Simulate mock camera photo
+      const mockPhotos = [
+        "https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?auto=format&fit=crop&w=640&q=80",
+        "https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=640&q=80",
+        "https://images.unsplash.com/photo-1503596476-1c12a8ba09a9?auto=format&fit=crop&w=640&q=80"
+      ];
+      const randomPhoto = mockPhotos[Math.floor(Math.random() * mockPhotos.length)];
+      setPhoto(randomPhoto);
+      setCameraActive(false);
+      toast.success("Simulated completion snapshot captured successfully!");
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const geotagCompletion = () => {
+    setGpsFetching(true);
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
+          setGpsCoordinates({ lat, lng, accuracy });
+          setGpsLocked(true);
+          setGpsFetching(false);
+          toast.success(`Jio geotag locked: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        },
+        (error) => {
+          console.warn("GPS Geolocator timed out or permission denied, fallback to Coimbatore coords.", error);
+          const mockLat = 11.0168 + (Math.random() - 0.5) * 0.03;
+          const mockLng = 76.9558 + (Math.random() - 0.5) * 0.03;
+          setGpsCoordinates({ lat: mockLat, lng: mockLng, accuracy: 15 });
+          setGpsLocked(true);
+          setGpsFetching(false);
+          toast.info("GPS access denied/not supported. Simulating regional Jio geotag in Coimbatore, Tamil Nadu.");
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    } else {
+      const mockLat = 11.0168 + (Math.random() - 0.5) * 0.03;
+      const mockLng = 76.9558 + (Math.random() - 0.5) * 0.03;
+      setGpsCoordinates({ lat: mockLat, lng: mockLng, accuracy: 12 });
+      setGpsLocked(true);
+      setGpsFetching(false);
+      toast.info("Jio geotag simulated in Coimbatore, Tamil Nadu.");
+    }
   };
 
   const handleEmptyBin = (binId, binName) => {
@@ -333,17 +431,121 @@ const WorkerDashboard = () => {
                         </div>
                       </div>
 
-                      <div className="mt-3 pt-3 border-top d-flex justify-content-end">
+                      <div className="mt-3 pt-3 border-top">
                         {task.status === 'Assigned' ? (
-                          <button 
-                            className="btn btn-success fw-bold px-4 py-2 eco-btn-primary d-flex align-items-center justify-content-center gap-2"
-                            onClick={() => {
-                              resolveComplaintTask(task.id, currentUser?.email);
-                              toast.success("Task completed. Awaiting Authority Verification.");
-                            }}
-                          >
-                            <FaCheck /> Mark Completed
-                          </button>
+                          <div className="d-flex flex-column gap-3">
+                            <h6 className="fw-bold text-slate-800">Proof of Work Required</h6>
+                            
+                            {/* Geotagging Controls */}
+                            <div className="card bg-light border-0 p-3 rounded-3 text-start">
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <span className="fs-7 fw-bold text-slate-800 d-flex align-items-center gap-2">
+                                  <FaCrosshairs className="text-danger" /> Jio-Geotag Tracking
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={geotagCompletion}
+                                  disabled={gpsFetching}
+                                  className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1 fs-8 px-3 py-1.5"
+                                  style={{ borderRadius: '6px' }}
+                                >
+                                  {gpsFetching ? "Locating..." : "Get Live GPS Geotag"}
+                                </button>
+                              </div>
+                              {gpsLocked ? (
+                                <div className="p-2 bg-success-subtle text-success rounded fs-8 fw-semibold d-flex align-items-center gap-1.5">
+                                  <FaCheck /> Geotag Locked: {gpsCoordinates.lat.toFixed(5)}, {gpsCoordinates.lng.toFixed(5)}
+                                </div>
+                              ) : (
+                                <span className="fs-8 text-muted italic">Click button to lock exact GPS coordinates.</span>
+                              )}
+                            </div>
+
+                            {/* Camera Streaming & Photo Viewport */}
+                            <div className="card border p-3 rounded-3 text-center bg-light">
+                              <span className="fs-7 fw-bold text-slate-800 d-block mb-2 text-start d-flex align-items-center gap-2">
+                                <FaCamera className="text-info" /> Photo Evidence Capture
+                              </span>
+                              
+                              {cameraActive && (
+                                <div className="position-relative bg-black rounded-3 overflow-hidden mb-3" style={{ height: '240px' }}>
+                                  <video 
+                                    ref={videoRef} 
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                  <div className="position-absolute bottom-0 start-50 translate-middle-x mb-2 d-flex gap-2">
+                                    <button 
+                                      type="button" 
+                                      onClick={captureSnapshot} 
+                                      className="btn btn-info btn-sm text-white px-3 py-1.5 fw-bold"
+                                    >
+                                      Capture Photo
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={stopCamera} 
+                                      className="btn btn-secondary btn-sm px-3 py-1.5"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {photo && !cameraActive && (
+                                <div className="position-relative rounded-3 overflow-hidden mb-3" style={{ height: '240px' }}>
+                                  <img 
+                                    src={photo} 
+                                    alt="Evidence preview" 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                  <div className="position-absolute top-0 end-0 m-2">
+                                    <button 
+                                      type="button" 
+                                      onClick={() => setPhoto(null)} 
+                                      className="btn btn-danger btn-sm p-1.5 d-flex align-items-center justify-content-center"
+                                      style={{ borderRadius: '50%' }}
+                                    >
+                                      <FaTrash size={12} />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {!cameraActive && !photo && (
+                                <div className="py-4 text-center border rounded-3 border-dashed" style={{ borderStyle: 'dashed' }}>
+                                  <p className="fs-8 text-muted mb-3">Include snapshot evidence of the completed task area.</p>
+                                  <button 
+                                    type="button" 
+                                    onClick={startCamera} 
+                                    className="btn btn-outline-info btn-sm d-flex align-items-center gap-2 mx-auto px-4 py-2"
+                                    style={{ borderRadius: '6px' }}
+                                  >
+                                    <FaCamera /> Activate Device Camera
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <button 
+                              className={`btn fw-bold px-4 py-3 d-flex align-items-center justify-content-center gap-2 ${gpsLocked && photo ? 'btn-success eco-btn-primary' : 'btn-secondary opacity-50'}`}
+                              disabled={!gpsLocked || !photo}
+                              style={{ borderRadius: '10px' }}
+                              onClick={() => {
+                                resolveComplaintTask(task.id, currentUser?.phone, photo, gpsCoordinates);
+                                toast.success("Task completed with geo-proof. Awaiting Authority Verification.");
+                                // Reset states for next task
+                                setPhoto(null);
+                                setGpsLocked(false);
+                                setGpsCoordinates({ lat: null, lng: null, accuracy: null });
+                              }}
+                            >
+                              <FaCheck /> Submit Completion
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-warning fw-bold d-flex align-items-center gap-1">
                             <FaShieldAlt /> Awaiting Verification

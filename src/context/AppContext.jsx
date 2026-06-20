@@ -390,7 +390,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const resolveComplaintTask = async (complaintId, workerPhone) => {
+  const resolveComplaintTask = async (complaintId, workerPhone, proofPhoto, geoTag) => {
     let updatedComplaint = null;
     const finalStatus = 'Awaiting Authority Verification';
 
@@ -400,7 +400,9 @@ export const AppProvider = ({ children }) => {
           ...c, 
           status: finalStatus, 
           completedBy: workerPhone,
-          completedAt: new Date().toISOString().replace('T', ' ').slice(0, 16) 
+          completedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          proofPhoto,
+          geoTag
         };
         return updatedComplaint;
       }
